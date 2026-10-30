@@ -8,7 +8,7 @@ let state = {
   activePEE: 'PEE_1',
   expectedTotal: 150,
   counts: { PEE_1: 0, PEE_2: 0, PEE_3: 0, PEE_4: 0 },
-  nomina: [],
+  observaciones: [], // { id, nombre, status: 'buscando' | 'encontrado' }
   timerSeconds: 0,
   timerRunning: true
 };
@@ -37,7 +37,7 @@ function triggerHaptic() {
   }
 }
 
-// Evita inyección de HTML al mostrar nombres/RUT escritos por el usuario
+// Evita inyección de HTML al mostrar nombres escritos por el usuario
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
@@ -75,55 +75,65 @@ function editTotalExpected() {
   }
 }
 
-// ---------- Nómina ----------
-function handleAddNominaPerson(e) {
+// ---------- Observaciones (personas que se buscan) ----------
+function handleAddObservacion(e) {
   e.preventDefault();
   const nombreInput = document.getElementById('inputNombre');
-  const rutInput = document.getElementById('inputRut');
+  const nombre = nombreInput.value.trim();
+  if (!nombre) return;
 
-  state.nomina.unshift({
+  triggerHaptic();
+  state.observaciones.unshift({
     id: Date.now().toString(),
-    nombre: nombreInput.value.trim(),
-    rut: rutInput.value.trim(),
-    pee: state.activePEE.replace('_', ' '),
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    nombre: nombre,
+    status: 'buscando'
   });
 
   nombreInput.value = '';
-  rutInput.value = '';
   saveState();
 }
 
-function removeNominaPerson(id) {
-  state.nomina = state.nomina.filter(p => p.id !== id);
+function toggleObservacion(id) {
+  triggerHaptic();
+  const item = state.observaciones.find(o => o.id === id);
+  if (!item) return;
+  item.status = item.status === 'buscando' ? 'encontrado' : 'buscando';
   saveState();
+}
+
+function removeObservacion(id) {
+  if (confirm('¿Eliminar este registro de Observaciones?')) {
+    state.observaciones = state.observaciones.filter(o => o.id !== id);
+    saveState();
+  }
 }
 
 // ---------- Reinicio global ----------
 function resetAllEvacuationData() {
-  if (confirm('⚠️ ¿Está seguro de REINICIAR TODOS los conteos de evacuados y la alarma?')) {
+  if (confirm('⚠️ ¿Está seguro de REINICIAR TODOS los conteos, las observaciones y la alarma?')) {
     state.counts = { PEE_1: 0, PEE_2: 0, PEE_3: 0, PEE_4: 0 };
-    state.nomina = [];
+    state.observaciones = [];
     state.timerSeconds = 0;
+    updateTimerDisplay();
     saveState();
   }
 }
 
 // ---------- Navegación por pestañas ----------
 function switchTab(tabName) {
-  ['tabCounter', 'tabCommand', 'tabRoster'].forEach(id => {
+  ['tabCounter', 'tabCommand', 'tabObs'].forEach(id => {
     document.getElementById(id).classList.add('hidden');
   });
 
   const buttons = {
     counter: document.getElementById('tabBtn1'),
     command: document.getElementById('tabBtn2'),
-    roster: document.getElementById('tabBtn3')
+    obs: document.getElementById('tabBtn3')
   };
   const sections = {
     counter: 'tabCounter',
     command: 'tabCommand',
-    roster: 'tabRoster'
+    obs: 'tabObs'
   };
 
   const base = 'flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 font-bold';
@@ -169,42 +179,58 @@ function renderUI() {
   document.getElementById('printEvacuated').innerText = totalEvacuated;
   document.getElementById('printMissing').innerText = missing;
 
-  // Tabla de nómina
-  const nominaBody = document.getElementById('nominaTableBody');
-  const emptyNomina = document.getElementById('emptyNominaMsg');
-  document.getElementById('nominaCount').innerText = state.nomina.length;
+  // ----- Observaciones -----
+  const obs = state.observaciones;
+  const searching = obs.filter(o => o.status === 'buscando');
+  const found = obs.filter(o => o.status === 'encontrado');
 
-  if (state.nomina.length === 0) {
-    nominaBody.innerHTML = '';
-    emptyNomina.classList.remove('hidden');
+  document.getElementById('statSearching').innerText = searching.length;
+  document.getElementById('printSearching').innerText = searching.length;
+  document.getElementById('obsSearchingCount').innerText = searching.length;
+  document.getElementById('obsFoundCount').innerText = found.length;
+
+  const obsBody = document.getElementById('obsTableBody');
+  const emptyObs = document.getElementById('emptyObsMsg');
+
+  if (obs.length === 0) {
+    obsBody.innerHTML = '';
+    emptyObs.classList.remove('hidden');
   } else {
-    emptyNomina.classList.add('hidden');
-    nominaBody.innerHTML = state.nomina.map(item => `
-      <tr class="hover:bg-white/5 transition">
-        <td class="py-2.5 px-2 font-bold">${escapeHtml(item.nombre)}</td>
-        <td class="py-2.5 px-2 font-mono text-gray-300">${escapeHtml(item.rut)}</td>
-        <td class="py-2.5 px-2 text-brand-orange font-bold">${escapeHtml(item.pee)}</td>
-        <td class="py-2.5 px-2 text-gray-400 font-mono">${escapeHtml(item.time)}</td>
-        <td class="py-2.5 px-2 text-right">
-          <button onclick="removeNominaPerson('${item.id}')" class="text-red-400 hover:text-red-200">
-            <i data-lucide="trash-2" class="w-4 h-4 inline"></i>
-          </button>
-        </td>
-      </tr>
-    `).join('');
+    emptyObs.classList.add('hidden');
+    // Primero los que se siguen buscando, luego los encontrados
+    const ordered = [...searching, ...found];
+    obsBody.innerHTML = ordered.map(item => {
+      const isSearching = item.status === 'buscando';
+      return `
+        <tr class="${isSearching ? 'bg-red-500/10' : 'bg-green-500/5'}">
+          <td class="py-3 px-2 text-sm font-bold">${escapeHtml(item.nombre)}</td>
+          <td class="py-3 px-2">
+            <span class="inline-block px-2 py-1 rounded-lg font-extrabold text-[11px] ${isSearching ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}">
+              ${isSearching ? 'BUSCANDO' : 'ENCONTRADO'}
+            </span>
+          </td>
+          <td class="py-3 px-2 text-right whitespace-nowrap">
+            <button onclick="toggleObservacion('${item.id}')" class="btn-tap px-3 py-1.5 rounded-lg font-bold text-[11px] ${isSearching ? 'bg-green-700 hover:bg-green-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-gray-200'}">
+              ${isSearching ? 'Marcar Encontrado' : 'Volver a Buscando'}
+            </button>
+            <button onclick="removeObservacion('${item.id}')" class="ml-2 text-red-400 hover:text-red-200" title="Eliminar">
+              <i data-lucide="trash-2" class="w-4 h-4 inline"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
   }
 
-  // Nómina para impresión
-  const printNominaBody = document.getElementById('printNominaBody');
-  if (state.nomina.length === 0) {
-    printNominaBody.innerHTML = `<tr><td colspan="4" class="py-2 text-center italic text-gray-500">Sin registros nominativos durante el conteo rápido inicial.</td></tr>`;
+  // Observaciones para impresión (solo las que siguen en búsqueda)
+  const printObsBody = document.getElementById('printObsBody');
+  if (searching.length === 0) {
+    printObsBody.innerHTML = `<tr><td colspan="2" class="py-2 text-center italic text-gray-500">Sin personas en búsqueda.</td></tr>`;
   } else {
-    printNominaBody.innerHTML = state.nomina.map(item => `
+    printObsBody.innerHTML = searching.map(item => `
       <tr>
         <td class="py-1.5 font-bold">${escapeHtml(item.nombre)}</td>
-        <td class="py-1.5 font-mono">${escapeHtml(item.rut)}</td>
-        <td class="py-1.5">${escapeHtml(item.pee)}</td>
-        <td class="py-1.5 text-right font-mono">${escapeHtml(item.time)}</td>
+        <td class="py-1.5 text-right font-bold text-red-700">BUSCANDO</td>
       </tr>
     `).join('');
   }
@@ -213,22 +239,39 @@ function renderUI() {
 }
 
 // ---------- Cronómetro de evacuación ----------
+function updateTimerDisplay() {
+  const hrs = String(Math.floor(state.timerSeconds / 3600)).padStart(2, '0');
+  const mins = String(Math.floor((state.timerSeconds % 3600) / 60)).padStart(2, '0');
+  const secs = String(state.timerSeconds % 60).padStart(2, '0');
+  const formatted = `${hrs}:${mins}:${secs}`;
+
+  document.getElementById('evacuationTimer').innerText = formatted;
+  document.getElementById('printTimer').innerText = formatted;
+}
+
 function startTimer() {
   setInterval(() => {
     state.timerSeconds++;
-    const hrs = String(Math.floor(state.timerSeconds / 3600)).padStart(2, '0');
-    const mins = String(Math.floor((state.timerSeconds % 3600) / 60)).padStart(2, '0');
-    const secs = String(state.timerSeconds % 60).padStart(2, '0');
-    const formatted = `${hrs}:${mins}:${secs}`;
-
-    document.getElementById('evacuationTimer').innerText = formatted;
-    document.getElementById('printTimer').innerText = formatted;
+    updateTimerDisplay();
+    // Guarda el tiempo cada 5 segundos para no perderlo si se cierra la página
+    if (state.timerSeconds % 5 === 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
   }, 1000);
+}
+
+function resetTimer() {
+  if (confirm('¿Reiniciar el tiempo de alarma a 00:00:00?')) {
+    state.timerSeconds = 0;
+    updateTimerDisplay();
+    saveState();
+  }
 }
 
 // ---------- Inicio ----------
 window.onload = function () {
   loadState();
   renderUI();
+  updateTimerDisplay();
   startTimer();
 };
