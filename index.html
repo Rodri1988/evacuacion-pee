@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#002874">
+  <title>Sistema de Evacuación y Conteo Rápido - PEE</title>
+
+  <!-- Tailwind CSS (CDN) + configuración propia -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="js/tailwind-config.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Estilos propios -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+  <!-- APP HEADER (NO PRINT) -->
+  <header class="bg-brand-navy border-b border-orange-500/30 p-3 sm:p-4 sticky top-0 z-50 shadow-xl no-print">
+    <div class="max-w-5xl mx-auto flex items-center justify-between gap-2">
+
+      <!-- Logo & Title -->
+      <div class="flex items-center space-x-2.5">
+        <div class="bg-brand-orange p-2 rounded-xl text-white shadow-md flex items-center justify-center">
+          <i data-lucide="shield-alert" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h1 class="font-black text-base sm:text-lg tracking-wider text-white uppercase leading-tight">
+            EVACUACIÓN PEE
+          </h1>
+          <div class="text-[11px] text-gray-300 flex items-center gap-1.5 font-mono">
+            <span id="syncStatusDot" class="w-2.5 h-2.5 rounded-full bg-green-400 inline-block animate-pulse"></span>
+            <span id="syncStatusText">Local + Sincro Activa</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Evacuation Elapsed Timer -->
+      <div class="bg-black/40 border border-red-500/50 rounded-xl px-3 py-1.5 flex items-center space-x-2 shadow-inner">
+        <i data-lucide="timer" class="w-5 h-5 text-brand-orange"></i>
+        <div>
+          <div class="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Tiempo Alarma</div>
+          <div id="evacuationTimer" class="font-mono text-lg sm:text-xl font-bold text-red-400">00:00:00</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- MAIN NAVIGATION TABS -->
+    <nav class="max-w-5xl mx-auto flex mt-3 bg-black/40 p-1 rounded-xl border border-white/10 text-xs font-bold">
+      <button id="tabBtn1" onclick="switchTab('counter')" class="flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 bg-brand-orange text-white shadow-md">
+        <i data-lucide="touchpad" class="w-4 h-4"></i>
+        Conteo PEE
+      </button>
+      <button id="tabBtn2" onclick="switchTab('command')" class="flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 text-gray-300 hover:text-white">
+        <i data-lucide="siren" class="w-4 h-4"></i>
+        Puesto Mando
+      </button>
+      <button id="tabBtn3" onclick="switchTab('roster')" class="flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 text-gray-300 hover:text-white">
+        <i data-lucide="clipboard-list" class="w-4 h-4"></i>
+        Nómina / RUT
+      </button>
+    </nav>
+  </header>
+
+  <!-- PRINT REPORT HEADER (solo visible al imprimir/PDF) -->
+  <div class="print-only p-6 text-black bg-white">
+    <div class="border-b-4 border-black pb-3 mb-4 flex justify-between items-start">
+      <div>
+        <h1 class="text-2xl font-black uppercase tracking-tight">INFORME DE EVACUACIÓN Y FISCALIZACIÓN</h1>
+        <h2 class="text-lg font-bold text-red-700 uppercase">DOCUMENTO OFICIAL PARA CUERPO DE BOMBEROS</h2>
+        <p class="text-xs text-gray-600 mt-1">Planta Industrial con Riesgo Químico y Material Combustible</p>
+      </div>
+      <div class="text-right font-mono text-xs font-bold">
+        <p>FECHA: <span id="printDate">--</span></p>
+        <p>TIEMPO EVACUACIÓN: <span id="printTimer">00:00:00</span></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-1 max-w-5xl w-full mx-auto p-3 sm:p-5 space-y-4">
+
+    <!-- TAB 1: CONTEO RÁPIDO EN PEE -->
+    <section id="tabCounter" class="space-y-4">
+
+      <div class="bg-brand-navy border-2 border-brand-orange/60 rounded-2xl p-4 shadow-2xl relative overflow-hidden">
+        <div class="flex flex-col gap-2">
+          <label class="text-xs font-extrabold uppercase tracking-widest text-brand-orange flex items-center gap-1.5">
+            <i data-lucide="map-pin" class="w-4 h-4"></i>
+            Selecciona tu Punto de Encuentro (PEE):
+          </label>
+          <select id="peeSelector" onchange="changeActivePEE()" class="w-full bg-slate-900 border-2 border-brand-orange text-white text-lg font-bold rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-400">
+            <option value="PEE_1">PEE 1: Acceso Principal</option>
+            <option value="PEE_2">PEE 2: Patio Trasero</option>
+            <option value="PEE_3">PEE 3: Sector Bodegas</option>
+            <option value="PEE_4">PEE 4: Zona Carga</option>
+          </select>
+        </div>
+
+        <div class="mt-4 bg-black/50 border border-white/10 rounded-xl p-4 text-center">
+          <div class="text-xs uppercase font-extrabold tracking-widest text-gray-300">Evacuados Registrados en este PEE</div>
+          <div id="peeCounterValue" class="text-6xl sm:text-7xl font-black text-brand-orange font-mono my-1">0</div>
+          <div class="text-[11px] text-gray-400">Pulsa los botones gigantes a continuación para contar personas en tiempo real</div>
+        </div>
+      </div>
+
+      <!-- BOTONES GIGANTES -->
+      <div class="grid grid-cols-2 gap-3 sm:gap-4">
+
+        <button onclick="addCount(1)" class="btn-tap bg-gradient-to-b from-emerald-600 to-green-700 active:from-green-500 active:to-emerald-600 border-2 border-green-400/50 text-white rounded-2xl p-5 sm:p-7 flex flex-col items-center justify-center shadow-2xl">
+          <span class="text-xs font-extrabold tracking-wider uppercase text-green-200">Ingreso Individual</span>
+          <span class="text-3xl sm:text-4xl font-black tracking-tight my-1">+1 PASÓ</span>
+          <i data-lucide="user-check" class="w-7 h-7 text-green-200"></i>
+        </button>
+
+        <button onclick="addCount(5)" class="btn-tap bg-gradient-to-b from-brand-orange to-orange-700 active:from-orange-500 active:to-brand-orange border-2 border-orange-400/50 text-white rounded-2xl p-5 sm:p-7 flex flex-col items-center justify-center shadow-2xl">
+          <span class="text-xs font-extrabold tracking-wider uppercase text-orange-200">Grupo Pequeño</span>
+          <span class="text-3xl sm:text-4xl font-black tracking-tight my-1">+5 GRUPO</span>
+          <i data-lucide="users" class="w-7 h-7 text-orange-200"></i>
+        </button>
+
+        <button onclick="addCount(10)" class="btn-tap bg-gradient-to-b from-blue-600 to-indigo-800 active:from-blue-500 active:to-indigo-700 border-2 border-blue-400/50 text-white rounded-2xl p-5 sm:p-7 flex flex-col items-center justify-center shadow-2xl">
+          <span class="text-xs font-extrabold tracking-wider uppercase text-blue-200">Grupo Grande / Bús</span>
+          <span class="text-3xl sm:text-4xl font-black tracking-tight my-1">+10 GRUPO</span>
+          <i data-lucide="users-round" class="w-7 h-7 text-blue-200"></i>
+        </button>
+
+        <button onclick="addCount(-1)" class="btn-tap bg-gradient-to-b from-slate-700 to-slate-900 active:from-slate-600 active:to-slate-800 border-2 border-white/20 text-red-300 rounded-2xl p-5 sm:p-7 flex flex-col items-center justify-center shadow-2xl">
+          <span class="text-xs font-extrabold tracking-wider uppercase text-slate-400">Corrección</span>
+          <span class="text-2xl sm:text-3xl font-black tracking-tight my-1 text-red-400">-1 CORREGIR</span>
+          <i data-lucide="minus-circle" class="w-6 h-6 text-red-400"></i>
+        </button>
+
+      </div>
+
+      <div class="flex justify-between items-center text-xs text-gray-400 pt-2 px-1">
+        <span>* Respuesta háptica (vibración) activada en celulares.</span>
+        <button onclick="resetCurrentPEE()" class="underline text-red-400 hover:text-red-300 font-bold">Reiniciar este PEE</button>
+      </div>
+
+    </section>
+
+    <!-- TAB 2: PUESTO DE MANDO -->
+    <section id="tabCommand" class="space-y-4 hidden">
+
+      <div class="bg-brand-navy p-4 rounded-2xl border border-white/10 flex flex-wrap justify-between items-center gap-3 no-print">
+        <div>
+          <h2 class="text-base sm:text-lg font-black text-white flex items-center gap-2">
+            <i data-lucide="siren" class="w-5 h-5 text-red-500 animate-bounce"></i>
+            CONSOLIDADO PUESTO DE MANDO
+          </h2>
+          <p class="text-xs text-gray-300">Muestreo en tiempo real acumulado de todos los PEE.</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button onclick="openPrintReport()" class="bg-brand-orange hover:bg-brand-orangeHover text-white px-4 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-2 shadow-lg transition">
+            <i data-lucide="printer" class="w-4 h-4"></i>
+            Ficha para Bomberos (PDF)
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+        <div class="bg-slate-900 border border-white/20 p-4 rounded-2xl shadow-xl">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-bold text-gray-300 uppercase">Dotación en Turno</span>
+            <button onclick="editTotalExpected()" class="text-xs text-brand-orange font-bold underline flex items-center gap-1 no-print">
+              <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Editar
+            </button>
+          </div>
+          <div id="statExpected" class="text-4xl font-black text-white font-mono mt-2">150</div>
+          <p class="text-[10px] text-gray-400 mt-1">Total de trabajadores esperados hoy</p>
+        </div>
+
+        <div class="bg-slate-900 border border-green-500/50 p-4 rounded-2xl shadow-xl">
+          <span class="text-xs font-bold text-green-400 uppercase">Total Evacuados</span>
+          <div id="statEvacuated" class="text-4xl font-black text-green-400 font-mono mt-2">0</div>
+          <p class="text-[10px] text-green-300/80 mt-1">Conteo consolidado en PEEs</p>
+        </div>
+
+        <div class="bg-slate-900 border-2 border-red-500 p-4 rounded-2xl shadow-xl animate-danger-pulse">
+          <span class="text-xs font-black text-red-400 uppercase tracking-wider">FALTANTES EN PLANTA</span>
+          <div id="statMissing" class="text-4xl font-black text-red-500 font-mono mt-2">150</div>
+          <p class="text-[10px] text-red-300 font-bold mt-1">⚠️ Personas por evacuar / rescate</p>
+        </div>
+
+      </div>
+
+      <div class="bg-slate-900 border border-white/10 rounded-2xl p-4 space-y-3">
+        <h3 class="text-xs font-extrabold uppercase tracking-widest text-brand-orange flex items-center gap-2">
+          <i data-lucide="layout-grid" class="w-4 h-4"></i>
+          Desglose por Punto de Encuentro
+        </h3>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="bg-slate-800/80 p-3 rounded-xl border border-white/5">
+            <div class="text-xs font-bold text-gray-300">PEE 1: Acceso Prin.</div>
+            <div id="peeVal1" class="text-2xl font-black text-brand-orange font-mono mt-1">0</div>
+          </div>
+          <div class="bg-slate-800/80 p-3 rounded-xl border border-white/5">
+            <div class="text-xs font-bold text-gray-300">PEE 2: Patio Trasero</div>
+            <div id="peeVal2" class="text-2xl font-black text-brand-orange font-mono mt-1">0</div>
+          </div>
+          <div class="bg-slate-800/80 p-3 rounded-xl border border-white/5">
+            <div class="text-xs font-bold text-gray-300">PEE 3: Sect. Bodegas</div>
+            <div id="peeVal3" class="text-2xl font-black text-brand-orange font-mono mt-1">0</div>
+          </div>
+          <div class="bg-slate-800/80 p-3 rounded-xl border border-white/5">
+            <div class="text-xs font-bold text-gray-300">PEE 4: Zona Carga</div>
+            <div id="peeVal4" class="text-2xl font-black text-brand-orange font-mono mt-1">0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-4 border-t border-white/10 flex justify-end no-print">
+        <button onclick="resetAllEvacuationData()" class="bg-red-950/80 hover:bg-red-900 border border-red-600/60 text-red-300 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+          Reiniciar Alarma y Conteos Globales
+        </button>
+      </div>
+
+    </section>
+
+    <!-- TAB 3: NÓMINA POST-EMERGENCIA -->
+    <section id="tabRoster" class="space-y-4 hidden">
+
+      <div class="bg-brand-navy p-4 rounded-2xl border border-white/10 space-y-3">
+        <div>
+          <h2 class="text-base font-black text-white flex items-center gap-2 uppercase">
+            <i data-lucide="clipboard-check" class="w-5 h-5 text-brand-orange"></i>
+            Nómina Identificada Post-Emergencia
+          </h2>
+          <p class="text-xs text-gray-300">Registra RUT o Nombres de las personas agrupadas en el PEE cuando la zona esté bajo control.</p>
+        </div>
+
+        <form onsubmit="handleAddNominaPerson(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+          <input type="text" id="inputNombre" placeholder="Nombre completo..." required class="bg-slate-900 border border-white/20 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-brand-orange">
+          <input type="text" id="inputRut" placeholder="RUT / ID Identificación..." required class="bg-slate-900 border border-white/20 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-brand-orange">
+
+          <button type="submit" class="bg-brand-orange hover:bg-brand-orangeHover text-white font-extrabold text-xs p-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            Agregar a Nómina
+          </button>
+        </form>
+      </div>
+
+      <div class="bg-slate-900 border border-white/10 rounded-2xl p-4 overflow-x-auto">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-xs font-bold text-gray-300 uppercase">Registrados Identificados (<span id="nominaCount">0</span>)</h3>
+          <span class="text-[11px] text-gray-400">Asignados automáticamente al PEE Activo</span>
+        </div>
+
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="border-b border-white/10 text-gray-400 uppercase font-bold">
+              <th class="py-2 px-2">Nombre</th>
+              <th class="py-2 px-2">RUT / ID</th>
+              <th class="py-2 px-2">Punto Encuentro</th>
+              <th class="py-2 px-2">Hora</th>
+              <th class="py-2 px-2 text-right">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="nominaTableBody" class="divide-y divide-white/5 text-white">
+            <!-- Se llena dinámicamente desde js/app.js -->
+          </tbody>
+        </table>
+        <div id="emptyNominaMsg" class="py-6 text-center text-gray-500 italic text-xs">
+          Sin registros nominativos aún. Utiliza el formulario superior para identificar evacuados.
+        </div>
+      </div>
+
+    </section>
+
+    <!-- VISTA DE IMPRESIÓN PARA BOMBEROS -->
+    <section id="printReportArea" class="print-only space-y-6 text-black">
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="print-box p-4 rounded">
+          <h3 class="font-bold text-sm uppercase">1. DATOS DE LA PLANTA</h3>
+          <p class="text-xs mt-1"><strong>Empresa:</strong> Planta Industrial HazMat</p>
+          <p class="text-xs"><strong>Riesgo:</strong> Material Químico y Combustible</p>
+          <p class="text-xs"><strong>Comandante Mando:</strong> Encargado SST / Brigada</p>
+        </div>
+
+        <div class="print-box p-4 rounded">
+          <h3 class="font-bold text-sm uppercase">2. RESUMEN DE CONTEO</h3>
+          <p class="text-xs mt-1"><strong>Dotación Esperada en Turno:</strong> <span id="printExpected">150</span> personas</p>
+          <p class="text-xs"><strong>Total Contados en PEE:</strong> <span id="printEvacuated">0</span> personas</p>
+          <p class="text-xs font-bold text-red-700"><strong>PERSONAS FALTANTES POR EVACUAR:</strong> <span id="printMissing">150</span> personas</p>
+        </div>
+      </div>
+
+      <div class="print-box p-4 rounded">
+        <h3 class="font-bold text-sm uppercase mb-2">3. DESGLOSE POR ZONAS Y PUNTOS DE ENCUENTRO (PEE)</h3>
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="border-b-2 border-black">
+              <th class="py-1">Punto de Encuentro</th>
+              <th class="py-1">Ubicación</th>
+              <th class="py-1 text-right">Conteo Personas</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-300">
+            <tr>
+              <td class="py-1.5 font-bold">PEE 1</td>
+              <td class="py-1.5">Acceso Principal</td>
+              <td class="py-1.5 text-right font-bold" id="printPEE1">0</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 font-bold">PEE 2</td>
+              <td class="py-1.5">Patio Trasero</td>
+              <td class="py-1.5 text-right font-bold" id="printPEE2">0</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 font-bold">PEE 3</td>
+              <td class="py-1.5">Sector Bodegas</td>
+              <td class="py-1.5 text-right font-bold" id="printPEE3">0</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 font-bold">PEE 4</td>
+              <td class="py-1.5">Zona Carga</td>
+              <td class="py-1.5 text-right font-bold" id="printPEE4">0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="print-box p-4 rounded">
+        <h3 class="font-bold text-sm uppercase mb-2">4. REGISTRO NOMINATIVO IDENTIFICADO (POST-EMERGENCIA)</h3>
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="border-b border-black">
+              <th class="py-1">Nombre</th>
+              <th class="py-1">RUT / ID</th>
+              <th class="py-1">PEE Ubicación</th>
+              <th class="py-1 text-right">Hora Registro</th>
+            </tr>
+          </thead>
+          <tbody id="printNominaBody" class="divide-y divide-gray-200">
+            <!-- Dinámico -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pt-8 flex justify-between text-xs font-bold">
+        <div class="border-t border-black pt-2 w-48 text-center">Firma Líder de Evacuación</div>
+        <div class="border-t border-black pt-2 w-48 text-center">Recepción Comandante Bomberos</div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- FOOTER (NO PRINT) -->
+  <footer class="bg-black/60 border-t border-white/10 p-2.5 text-center text-[11px] text-gray-400 no-print">
+    <span>Sistema de Evacuación PWA | Respuesta Táctica e Industrial</span>
+  </footer>
+
+  <!-- Lógica de la aplicación -->
+  <script src="js/app.js"></script>
+</body>
+</html>
