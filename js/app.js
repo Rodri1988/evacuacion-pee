@@ -1,76 +1,198 @@
 // ==========================================
 // Sistema de Evacuación y Conteo Rápido - PEE
+// Versión con sincronización en tiempo real (Firebase)
 // ==========================================
 
-const STORAGE_KEY = 'evac_system_state_v1';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {
+  getDatabase, ref, onValue, set, update, remove, push, runTransaction
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+import { firebaseConfig } from './firebase-config.js';
 
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const LOCAL_KEY = 'evac_local_v2';
+const PEES = ['PEE_1', 'PEE_2', 'PEE_3', 'PEE_4'];
+
+// Datos que solo viven en ESTE dispositivo
+const local = { activePEE: 'PEE_1', sala: '' };
+
+// Datos compartidos (vienen de Firebase)
 let state = {
-  activePEE: 'PEE_1',
   expectedTotal: 150,
   counts: { PEE_1: 0, PEE_2: 0, PEE_3: 0, PEE_4: 0 },
-  observaciones: [], // { id, nombre, status: 'buscando' | 'encontrado' }
-  timerSeconds: 0,
-  timerRunning: true
+  observaciones: [],
+  alarmStart: null
 };
 
-// ---------- Persistencia ----------
-function loadState() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    try {
-      state = { ...state, ...JSON.parse(saved) };
-    } catch (e) {
-      console.error('Error cargando estado:', e);
-    }
+let salaRef = null;
+let unsubscribeSala = null;
+let serverOffset = 0;
+let connected = false;
+
+// ---------- Datos locales (PEE activo y código de sala) ----------
+function loadLocal() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}');
+    if (PEES.includes(saved.activePEE)) local.activePEE = saved.activePEE;
+    if (typeof saved.sala === 'string') local.sala = saved.sala;
+  } catch (e) {
+    console.error('Error cargando datos locales:', e);
   }
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  renderUI();
+function saveLocal() {
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
 }
 
 // ---------- Utilidades ----------
 function triggerHaptic() {
-  if ('vibrate' in navigator) {
-    navigator.vibrate(40);
-  }
+  if ('vibrate' in navigator) navigator.vibrate(40);
 }
 
-// Evita inyección de HTML al mostrar nombres escritos por el usuario
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
 }
 
+function normalizeSala(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '');
+}
+
+function salaPath(sub) {
+  return sub ? `salas/${local.sala}/${sub}` : `salas/${local.sala}`;
+}
+
+// ---------- Sala (código de brigada) ----------
+function openSalaModal() {
+  document.getElementById('salaInput').value = local.sala || '';
+  document.getElementById('salaError').classList.add('hidden');
+  document.getElementById('salaCancelBtn').classList.toggle('hidden', !local.sala);
+  document.getElementById('salaModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('salaInput').focus(), 50);
+}
+
+function closeSalaModal() {
+  document.getElementById('salaModal').classList.add('hidden');
+}
+
+function submitSala(e) {
+  e.preventDefault();
+  const code = normalizeSala(document.getElementById('salaInput').value);
+  if (!/^[a-z0-9-]{4,40}$/.test(code)) {
+    document.getElementById('salaError').classList.remove('hidden');
+    return;
+  }
+  enterSala(code);
+}
+
+function enterSala(code) {
+  if (unsubscribeSala) unsubscribeSala();
+
+  local.sala = code;
+  saveLocal();
+  salaRef = ref(db, salaPath());
+
+  unsubscribeSala = onValue(
+    salaRef,
+    snap => {
+      applyRemote(snap.val() || {});
+      renderUI();
+    },
+    err => {
+      console.error('Error de sincronización:', err);
+      updateSyncStatus('error');
+    }
+  );
+
+  closeSalaModal();
+  renderUI();
+  updateSyncStatus();
+}
+
+function applyRemote(v) {
+  const c = v.counts || {};
+  state.counts = {
+    PEE_1: Number(c.PEE_1) || 0,
+    PEE_2: Number(c.PEE_2) || 0,
+    PEE_3: Number(c.PEE_3) || 0,
+    PEE_4: Number(c.PEE_4) || 0
+  };
+  state.expectedTotal = typeof v.expectedTotal === 'number' ? v.expectedTotal : 150;
+  state.alarmStart = typeof v.alarmStart === 'number' ? v.alarmStart : null;
+  state.observaciones = Object.entries(v.observaciones || {}).map(([id, o]) => ({
+    id,
+    nombre: String((o && o.nombre) || ''),
+    status: o && o.status === 'encontrado' ? 'encontrado' : 'buscando',
+    ts: (o && o.ts) || 0
+  }));
+}
+
+function requireSala() {
+  if (!salaRef) {
+    openSalaModal();
+    return false;
+  }
+  return true;
+}
+
+// ---------- Estado de conexión ----------
+function updateSyncStatus(forced) {
+  const dot = document.getElementById('syncStatusDot');
+  const text = document.getElementById('syncStatusText');
+  const base = 'w-2.5 h-2.5 rounded-full inline-block ';
+
+  if (!local.sala) {
+    dot.className = base + 'bg-yellow-400';
+    text.innerText = 'Sin código de brigada';
+  } else if (forced === 'error') {
+    dot.className = base + 'bg-red-500';
+    text.innerText = 'Error de acceso a la sala';
+  } else if (connected) {
+    dot.className = base + 'bg-green-400 animate-pulse';
+    text.innerText = `Sala: ${local.sala} · En línea`;
+  } else {
+    dot.className = base + 'bg-red-500';
+    text.innerText = 'SIN CONEXIÓN (no se sincroniza)';
+  }
+}
+
 // ---------- Conteo ----------
 function addCount(amount) {
+  if (!requireSala()) return;
   triggerHaptic();
-  const current = state.counts[state.activePEE] || 0;
-  state.counts[state.activePEE] = Math.max(0, current + amount);
-  saveState();
+  // Transacción: suma segura aunque varias personas cuenten a la vez
+  runTransaction(ref(db, salaPath(`counts/${local.activePEE}`)), cur =>
+    Math.max(0, (Number(cur) || 0) + amount)
+  ).catch(err => console.error('Error al contar:', err));
 }
 
 function changeActivePEE() {
-  state.activePEE = document.getElementById('peeSelector').value;
-  saveState();
+  local.activePEE = document.getElementById('peeSelector').value;
+  saveLocal();
+  renderUI();
 }
 
 function resetCurrentPEE() {
-  if (confirm(`¿Reiniciar a cero el conteo del ${state.activePEE.replace('_', ' ')}?`)) {
-    state.counts[state.activePEE] = 0;
-    saveState();
+  if (!requireSala()) return;
+  if (confirm(`¿Reiniciar a cero el conteo del ${local.activePEE.replace('_', ' ')}? (Se reinicia para TODOS los dispositivos)`)) {
+    set(ref(db, salaPath(`counts/${local.activePEE}`)), 0).catch(console.error);
   }
 }
 
 function editTotalExpected() {
+  if (!requireSala()) return;
   const input = prompt('Ingrese la Dotación Total Esperada en Turno:', state.expectedTotal);
   if (input !== null) {
     const val = parseInt(input, 10);
     if (!isNaN(val) && val >= 0) {
-      state.expectedTotal = val;
-      saveState();
+      set(ref(db, salaPath('expectedTotal')), val).catch(console.error);
     }
   }
 }
@@ -78,44 +200,78 @@ function editTotalExpected() {
 // ---------- Observaciones (personas que se buscan) ----------
 function handleAddObservacion(e) {
   e.preventDefault();
-  const nombreInput = document.getElementById('inputNombre');
-  const nombre = nombreInput.value.trim();
+  if (!requireSala()) return;
+  const input = document.getElementById('inputNombre');
+  const nombre = input.value.trim().slice(0, 100);
   if (!nombre) return;
 
   triggerHaptic();
-  state.observaciones.unshift({
-    id: Date.now().toString(),
-    nombre: nombre,
-    status: 'buscando'
-  });
+  push(ref(db, salaPath('observaciones')), {
+    nombre,
+    status: 'buscando',
+    ts: Date.now() + serverOffset
+  }).catch(console.error);
 
-  nombreInput.value = '';
-  saveState();
+  input.value = '';
 }
 
 function toggleObservacion(id) {
-  triggerHaptic();
+  if (!requireSala()) return;
   const item = state.observaciones.find(o => o.id === id);
   if (!item) return;
-  item.status = item.status === 'buscando' ? 'encontrado' : 'buscando';
-  saveState();
+  triggerHaptic();
+  update(ref(db, salaPath(`observaciones/${id}`)), {
+    status: item.status === 'buscando' ? 'encontrado' : 'buscando'
+  }).catch(console.error);
 }
 
 function removeObservacion(id) {
+  if (!requireSala()) return;
   if (confirm('¿Eliminar este registro de Observaciones?')) {
-    state.observaciones = state.observaciones.filter(o => o.id !== id);
-    saveState();
+    remove(ref(db, salaPath(`observaciones/${id}`))).catch(console.error);
   }
+}
+
+// ---------- Cronómetro compartido ----------
+function startAlarm() {
+  if (!requireSala()) return;
+  set(ref(db, salaPath('alarmStart')), Date.now() + serverOffset).catch(console.error);
+}
+
+function resetTimer() {
+  if (!requireSala()) return;
+  if (confirm('¿Reiniciar el tiempo de alarma a 00:00:00? (Se reinicia para TODOS los dispositivos)')) {
+    set(ref(db, salaPath('alarmStart')), null).catch(console.error);
+  }
+}
+
+function updateTimerDisplay() {
+  let seconds = 0;
+  if (state.alarmStart) {
+    seconds = Math.max(0, Math.floor((Date.now() + serverOffset - state.alarmStart) / 1000));
+  }
+  const hrs = String(Math.floor(seconds / 3600)).padStart(2, '0');
+  const mins = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+  const secs = String(seconds % 60).padStart(2, '0');
+  const formatted = `${hrs}:${mins}:${secs}`;
+
+  document.getElementById('evacuationTimer').innerText = formatted;
+  document.getElementById('printTimer').innerText = formatted;
+
+  const running = !!state.alarmStart;
+  document.getElementById('btnStartTimer').classList.toggle('hidden', running);
+  document.getElementById('btnResetTimer').classList.toggle('hidden', !running);
 }
 
 // ---------- Reinicio global ----------
 function resetAllEvacuationData() {
-  if (confirm('⚠️ ¿Está seguro de REINICIAR TODOS los conteos, las observaciones y la alarma?')) {
-    state.counts = { PEE_1: 0, PEE_2: 0, PEE_3: 0, PEE_4: 0 };
-    state.observaciones = [];
-    state.timerSeconds = 0;
-    updateTimerDisplay();
-    saveState();
+  if (!requireSala()) return;
+  if (confirm('⚠️ ¿Está seguro de REINICIAR TODOS los conteos, las observaciones y la alarma? Se borrará para TODOS los dispositivos.')) {
+    update(ref(db, salaPath()), {
+      counts: { PEE_1: 0, PEE_2: 0, PEE_3: 0, PEE_4: 0 },
+      observaciones: null,
+      alarmStart: null
+    }).catch(console.error);
   }
 }
 
@@ -130,11 +286,7 @@ function switchTab(tabName) {
     command: document.getElementById('tabBtn2'),
     obs: document.getElementById('tabBtn3')
   };
-  const sections = {
-    counter: 'tabCounter',
-    command: 'tabCommand',
-    obs: 'tabObs'
-  };
+  const sections = { counter: 'tabCounter', command: 'tabCommand', obs: 'tabObs' };
 
   const base = 'flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 font-bold';
   const activeClass = `${base} bg-brand-orange text-white shadow-md`;
@@ -154,35 +306,34 @@ function openPrintReport() {
 
 // ---------- Render ----------
 function renderUI() {
-  // Selector y contador activo
-  document.getElementById('peeSelector').value = state.activePEE;
-  document.getElementById('peeCounterValue').innerText = state.counts[state.activePEE] || 0;
-
-  // Métricas del puesto de mando
   const c = state.counts;
-  const totalEvacuated = (c.PEE_1 || 0) + (c.PEE_2 || 0) + (c.PEE_3 || 0) + (c.PEE_4 || 0);
+
+  // Selector y contador de ESTE dispositivo
+  document.getElementById('peeSelector').value = local.activePEE;
+  document.getElementById('peeCounterValue').innerText = c[local.activePEE] || 0;
+
+  // Métricas del puesto de mando (suma de todos los dispositivos)
+  const totalEvacuated = PEES.reduce((sum, p) => sum + (c[p] || 0), 0);
   const missing = Math.max(0, state.expectedTotal - totalEvacuated);
 
   document.getElementById('statExpected').innerText = state.expectedTotal;
   document.getElementById('statEvacuated').innerText = totalEvacuated;
   document.getElementById('statMissing').innerText = missing;
 
-  // Desglose por PEE (pantalla e impresión)
   for (let i = 1; i <= 4; i++) {
     const value = c[`PEE_${i}`] || 0;
     document.getElementById(`peeVal${i}`).innerText = value;
     document.getElementById(`printPEE${i}`).innerText = value;
   }
 
-  // Elementos de impresión
   document.getElementById('printExpected').innerText = state.expectedTotal;
   document.getElementById('printEvacuated').innerText = totalEvacuated;
   document.getElementById('printMissing').innerText = missing;
 
   // ----- Observaciones -----
-  const obs = state.observaciones;
-  const searching = obs.filter(o => o.status === 'buscando');
-  const found = obs.filter(o => o.status === 'encontrado');
+  const byNewest = (a, b) => b.ts - a.ts;
+  const searching = state.observaciones.filter(o => o.status === 'buscando').sort(byNewest);
+  const found = state.observaciones.filter(o => o.status === 'encontrado').sort(byNewest);
 
   document.getElementById('statSearching').innerText = searching.length;
   document.getElementById('printSearching').innerText = searching.length;
@@ -192,14 +343,12 @@ function renderUI() {
   const obsBody = document.getElementById('obsTableBody');
   const emptyObs = document.getElementById('emptyObsMsg');
 
-  if (obs.length === 0) {
+  if (state.observaciones.length === 0) {
     obsBody.innerHTML = '';
     emptyObs.classList.remove('hidden');
   } else {
     emptyObs.classList.add('hidden');
-    // Primero los que se siguen buscando, luego los encontrados
-    const ordered = [...searching, ...found];
-    obsBody.innerHTML = ordered.map(item => {
+    obsBody.innerHTML = [...searching, ...found].map(item => {
       const isSearching = item.status === 'buscando';
       return `
         <tr class="${isSearching ? 'bg-red-500/10' : 'bg-green-500/5'}">
@@ -235,43 +384,39 @@ function renderUI() {
     `).join('');
   }
 
+  updateTimerDisplay();
   if (window.lucide) window.lucide.createIcons();
 }
 
-// ---------- Cronómetro de evacuación ----------
-function updateTimerDisplay() {
-  const hrs = String(Math.floor(state.timerSeconds / 3600)).padStart(2, '0');
-  const mins = String(Math.floor((state.timerSeconds % 3600) / 60)).padStart(2, '0');
-  const secs = String(state.timerSeconds % 60).padStart(2, '0');
-  const formatted = `${hrs}:${mins}:${secs}`;
-
-  document.getElementById('evacuationTimer').innerText = formatted;
-  document.getElementById('printTimer').innerText = formatted;
-}
-
-function startTimer() {
-  setInterval(() => {
-    state.timerSeconds++;
-    updateTimerDisplay();
-    // Guarda el tiempo cada 5 segundos para no perderlo si se cierra la página
-    if (state.timerSeconds % 5 === 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    }
-  }, 1000);
-}
-
-function resetTimer() {
-  if (confirm('¿Reiniciar el tiempo de alarma a 00:00:00?')) {
-    state.timerSeconds = 0;
-    updateTimerDisplay();
-    saveState();
-  }
-}
+// ---------- Exponer funciones a los botones del HTML ----------
+Object.assign(window, {
+  addCount, changeActivePEE, resetCurrentPEE, editTotalExpected,
+  handleAddObservacion, toggleObservacion, removeObservacion,
+  startAlarm, resetTimer, resetAllEvacuationData,
+  switchTab, openPrintReport,
+  openSalaModal, closeSalaModal, submitSala
+});
 
 // ---------- Inicio ----------
-window.onload = function () {
-  loadState();
-  renderUI();
-  updateTimerDisplay();
-  startTimer();
-};
+loadLocal();
+
+// Diferencia entre el reloj del celular y el del servidor (para que todos vean el mismo tiempo)
+onValue(ref(db, '.info/serverTimeOffset'), snap => {
+  serverOffset = snap.val() || 0;
+});
+
+onValue(ref(db, '.info/connected'), snap => {
+  connected = snap.val() === true;
+  updateSyncStatus();
+});
+
+setInterval(updateTimerDisplay, 1000);
+
+renderUI();
+updateSyncStatus();
+
+if (local.sala && /^[a-z0-9-]{4,40}$/.test(local.sala)) {
+  enterSala(local.sala);
+} else {
+  openSalaModal();
+}
