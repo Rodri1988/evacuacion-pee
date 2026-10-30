@@ -45,6 +45,9 @@
           <div class="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Tiempo Alarma</div>
           <div id="evacuationTimer" class="font-mono text-lg sm:text-xl font-bold text-red-400">00:00:00</div>
         </div>
+        <button onclick="resetTimer()" title="Reiniciar tiempo" class="btn-tap ml-1 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-200">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+        </button>
       </div>
 
     </div>
@@ -59,9 +62,9 @@
         <i data-lucide="siren" class="w-4 h-4"></i>
         Puesto Mando
       </button>
-      <button id="tabBtn3" onclick="switchTab('roster')" class="flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 text-gray-300 hover:text-white">
-        <i data-lucide="clipboard-list" class="w-4 h-4"></i>
-        Nómina / RUT
+      <button id="tabBtn3" onclick="switchTab('obs')" class="flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 text-gray-300 hover:text-white">
+        <i data-lucide="search" class="w-4 h-4"></i>
+        Observaciones
       </button>
     </nav>
   </header>
@@ -164,7 +167,7 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
 
         <div class="bg-slate-900 border border-white/20 p-4 rounded-2xl shadow-xl">
           <div class="flex justify-between items-center">
@@ -187,6 +190,12 @@
           <span class="text-xs font-black text-red-400 uppercase tracking-wider">FALTANTES EN PLANTA</span>
           <div id="statMissing" class="text-4xl font-black text-red-500 font-mono mt-2">150</div>
           <p class="text-[10px] text-red-300 font-bold mt-1">⚠️ Personas por evacuar / rescate</p>
+        </div>
+
+        <div class="bg-slate-900 border border-yellow-500/60 p-4 rounded-2xl shadow-xl">
+          <span class="text-xs font-bold text-yellow-400 uppercase">En Búsqueda</span>
+          <div id="statSearching" class="text-4xl font-black text-yellow-400 font-mono mt-2">0</div>
+          <p class="text-[10px] text-yellow-300/80 mt-1">Personas reportadas en Observaciones</p>
         </div>
 
       </div>
@@ -226,51 +235,50 @@
 
     </section>
 
-    <!-- TAB 3: NÓMINA POST-EMERGENCIA -->
-    <section id="tabRoster" class="space-y-4 hidden">
+    <!-- TAB 3: OBSERVACIONES (PERSONAS QUE SE BUSCAN) -->
+    <section id="tabObs" class="space-y-4 hidden">
 
       <div class="bg-brand-navy p-4 rounded-2xl border border-white/10 space-y-3">
         <div>
           <h2 class="text-base font-black text-white flex items-center gap-2 uppercase">
-            <i data-lucide="clipboard-check" class="w-5 h-5 text-brand-orange"></i>
-            Nómina Identificada Post-Emergencia
+            <i data-lucide="search" class="w-5 h-5 text-brand-orange"></i>
+            Observaciones
           </h2>
-          <p class="text-xs text-gray-300">Registra RUT o Nombres de las personas agrupadas en el PEE cuando la zona esté bajo control.</p>
+          <p class="text-xs text-gray-300">Registra el nombre de la persona que se necesita encontrar. Cuando aparezca, márcala como Encontrado.</p>
         </div>
 
-        <form onsubmit="handleAddNominaPerson(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
-          <input type="text" id="inputNombre" placeholder="Nombre completo..." required class="bg-slate-900 border border-white/20 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-brand-orange">
-          <input type="text" id="inputRut" placeholder="RUT / ID Identificación..." required class="bg-slate-900 border border-white/20 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-brand-orange">
+        <form onsubmit="handleAddObservacion(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+          <input type="text" id="inputNombre" placeholder="Nombre de la persona que se busca..." required class="sm:col-span-2 bg-slate-900 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:border-brand-orange">
 
           <button type="submit" class="bg-brand-orange hover:bg-brand-orangeHover text-white font-extrabold text-xs p-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg">
             <i data-lucide="user-plus" class="w-4 h-4"></i>
-            Agregar a Nómina
+            Agregar
           </button>
         </form>
       </div>
 
       <div class="bg-slate-900 border border-white/10 rounded-2xl p-4 overflow-x-auto">
-        <div class="flex justify-between items-center mb-3">
-          <h3 class="text-xs font-bold text-gray-300 uppercase">Registrados Identificados (<span id="nominaCount">0</span>)</h3>
-          <span class="text-[11px] text-gray-400">Asignados automáticamente al PEE Activo</span>
+        <div class="flex justify-between items-center mb-3 gap-2 flex-wrap">
+          <h3 class="text-xs font-bold text-gray-300 uppercase">
+            Buscando (<span id="obsSearchingCount">0</span>)
+            · Encontrados (<span id="obsFoundCount">0</span>)
+          </h3>
         </div>
 
         <table class="w-full text-left border-collapse text-xs">
           <thead>
             <tr class="border-b border-white/10 text-gray-400 uppercase font-bold">
               <th class="py-2 px-2">Nombre</th>
-              <th class="py-2 px-2">RUT / ID</th>
-              <th class="py-2 px-2">Punto Encuentro</th>
-              <th class="py-2 px-2">Hora</th>
+              <th class="py-2 px-2">Estado</th>
               <th class="py-2 px-2 text-right">Acción</th>
             </tr>
           </thead>
-          <tbody id="nominaTableBody" class="divide-y divide-white/5 text-white">
+          <tbody id="obsTableBody" class="divide-y divide-white/5 text-white">
             <!-- Se llena dinámicamente desde js/app.js -->
           </tbody>
         </table>
-        <div id="emptyNominaMsg" class="py-6 text-center text-gray-500 italic text-xs">
-          Sin registros nominativos aún. Utiliza el formulario superior para identificar evacuados.
+        <div id="emptyObsMsg" class="py-6 text-center text-gray-500 italic text-xs">
+          Sin observaciones aún. Agrega el nombre de la persona que se necesita encontrar.
         </div>
       </div>
 
@@ -292,6 +300,7 @@
           <p class="text-xs mt-1"><strong>Dotación Esperada en Turno:</strong> <span id="printExpected">150</span> personas</p>
           <p class="text-xs"><strong>Total Contados en PEE:</strong> <span id="printEvacuated">0</span> personas</p>
           <p class="text-xs font-bold text-red-700"><strong>PERSONAS FALTANTES POR EVACUAR:</strong> <span id="printMissing">150</span> personas</p>
+          <p class="text-xs font-bold"><strong>PERSONAS EN BÚSQUEDA (OBSERVACIONES):</strong> <span id="printSearching">0</span> personas</p>
         </div>
       </div>
 
@@ -331,17 +340,15 @@
       </div>
 
       <div class="print-box p-4 rounded">
-        <h3 class="font-bold text-sm uppercase mb-2">4. REGISTRO NOMINATIVO IDENTIFICADO (POST-EMERGENCIA)</h3>
+        <h3 class="font-bold text-sm uppercase mb-2">4. PERSONAS NO ENCONTRADAS (OBSERVACIONES)</h3>
         <table class="w-full text-left text-xs border-collapse">
           <thead>
             <tr class="border-b border-black">
               <th class="py-1">Nombre</th>
-              <th class="py-1">RUT / ID</th>
-              <th class="py-1">PEE Ubicación</th>
-              <th class="py-1 text-right">Hora Registro</th>
+              <th class="py-1 text-right">Estado</th>
             </tr>
           </thead>
-          <tbody id="printNominaBody" class="divide-y divide-gray-200">
+          <tbody id="printObsBody" class="divide-y divide-gray-200">
             <!-- Dinámico -->
           </tbody>
         </table>
