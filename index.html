@@ -18,6 +18,32 @@
 </head>
 <body class="min-h-screen flex flex-col justify-between">
 
+  <!-- VENTANA: CÓDIGO DE BRIGADA (NO PRINT) -->
+  <div id="salaModal" class="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-4 no-print">
+    <form onsubmit="submitSala(event)" class="bg-brand-navy border-2 border-brand-orange/60 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-3">
+      <div class="flex items-center gap-2">
+        <i data-lucide="key-round" class="w-5 h-5 text-brand-orange"></i>
+        <h2 class="text-base font-black uppercase tracking-wide">Código de brigada</h2>
+      </div>
+      <p class="text-xs text-gray-300">
+        Escribe el código que te entregó el Líder de Evacuación. Todos los monitores y el Puesto de Mando deben usar <strong>el mismo código</strong> para ver los mismos conteos.
+      </p>
+      <input type="text" id="salaInput" autocomplete="off" autocapitalize="none" placeholder="Ej: brigada-access-2026"
+        class="w-full bg-slate-900 border-2 border-brand-orange text-white text-base font-bold rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-400">
+      <p id="salaError" class="hidden text-xs text-red-300 font-bold">
+        El código debe tener entre 4 y 40 caracteres: letras, números o guiones (sin espacios ni tildes).
+      </p>
+      <div class="flex gap-2">
+        <button type="submit" class="btn-tap flex-1 bg-brand-orange hover:bg-brand-orangeHover text-white font-extrabold text-sm py-3 rounded-xl">
+          Entrar
+        </button>
+        <button type="button" id="salaCancelBtn" onclick="closeSalaModal()" class="btn-tap hidden bg-slate-700 hover:bg-slate-600 text-gray-200 font-bold text-sm px-4 rounded-xl">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  </div>
+
   <!-- APP HEADER (NO PRINT) -->
   <header class="bg-brand-navy border-b border-orange-500/30 p-3 sm:p-4 sticky top-0 z-50 shadow-xl no-print">
     <div class="max-w-5xl mx-auto flex items-center justify-between gap-2">
@@ -33,7 +59,8 @@
           </h1>
           <div class="text-[11px] text-gray-300 flex items-center gap-1.5 font-mono">
             <span id="syncStatusDot" class="w-2.5 h-2.5 rounded-full bg-green-400 inline-block animate-pulse"></span>
-            <span id="syncStatusText">Local + Sincro Activa</span>
+            <span id="syncStatusText">Conectando...</span>
+            <button onclick="openSalaModal()" class="underline text-orange-300 hover:text-orange-200 ml-1">cambiar código</button>
           </div>
         </div>
       </div>
@@ -45,7 +72,11 @@
           <div class="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Tiempo Alarma</div>
           <div id="evacuationTimer" class="font-mono text-lg sm:text-xl font-bold text-red-400">00:00:00</div>
         </div>
-        <button onclick="resetTimer()" title="Reiniciar tiempo" class="btn-tap ml-1 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-200">
+        <button id="btnStartTimer" onclick="startAlarm()" title="Iniciar alarma" class="btn-tap ml-1 px-2.5 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white flex items-center gap-1 text-[11px] font-extrabold">
+          <i data-lucide="play" class="w-4 h-4"></i>
+          Iniciar
+        </button>
+        <button id="btnResetTimer" onclick="resetTimer()" title="Reiniciar tiempo" class="btn-tap hidden ml-1 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-gray-200">
           <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
         </button>
       </div>
@@ -369,6 +400,6 @@
   </footer>
 
   <!-- Lógica de la aplicación -->
-  <script src="js/app.js"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
