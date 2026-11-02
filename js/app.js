@@ -156,7 +156,7 @@ function updateSyncStatus(forced) {
     text.innerText = 'Error de acceso a la sala';
   } else if (connected) {
     dot.className = base + 'bg-green-400 animate-pulse';
-    text.innerText = `Sala: ${local.sala} · En línea`;
+    text.innerText = `En línea`;
   } else {
     dot.className = base + 'bg-red-500';
     text.innerText = 'SIN CONEXIÓN (no se sincroniza)';
