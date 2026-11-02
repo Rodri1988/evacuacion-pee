@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#002874">
-  <title>Sistema de Evacuación y Conteo Rápido - PEE</title>
+  <title>Sistema de Evacuación Brigada</title>
 
   <!-- Tailwind CSS (CDN) + configuración propia -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -28,7 +28,7 @@
       <p class="text-xs text-gray-300">
         Escribe el código que te entregó el Líder de Evacuación. Todos los monitores y el Puesto de Mando deben usar <strong>el mismo código</strong> para ver los mismos conteos.
       </p>
-      <input type="text" id="salaInput" autocomplete="off" autocapitalize="none" placeholder="Ej: brigada-access-2026"
+      <input type="text" id="salaInput" autocomplete="off" autocapitalize="none" placeholder="Ej: brigada2026"
         class="w-full bg-slate-900 border-2 border-brand-orange text-white text-base font-bold rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-400">
       <p id="salaError" class="hidden text-xs text-red-300 font-bold">
         El código debe tener entre 4 y 40 caracteres: letras, números o guiones (sin espacios ni tildes).
@@ -55,7 +55,7 @@
         </div>
         <div>
           <h1 class="font-black text-base sm:text-lg tracking-wider text-white uppercase leading-tight">
-            EVACUACIÓN PEE
+            EVACUACIÓN BRIGADA
           </h1>
           <div class="text-[11px] text-gray-300 flex items-center gap-1.5 font-mono">
             <span id="syncStatusDot" class="w-2.5 h-2.5 rounded-full bg-green-400 inline-block animate-pulse"></span>
@@ -87,7 +87,7 @@
     <nav class="max-w-5xl mx-auto flex mt-3 bg-black/40 p-1 rounded-xl border border-white/10 text-xs font-bold">
       <button id="tabBtn1" onclick="switchTab('counter')" class="flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 bg-brand-orange text-white shadow-md">
         <i data-lucide="touchpad" class="w-4 h-4"></i>
-        Conteo PEE
+        Conteo Personal
       </button>
       <button id="tabBtn2" onclick="switchTab('command')" class="flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 text-gray-300 hover:text-white">
         <i data-lucide="siren" class="w-4 h-4"></i>
@@ -136,7 +136,7 @@
         </div>
 
         <div class="mt-4 bg-black/50 border border-white/10 rounded-xl p-4 text-center">
-          <div class="text-xs uppercase font-extrabold tracking-widest text-gray-300">Evacuados Registrados en este PEE</div>
+          <div class="text-xs uppercase font-extrabold tracking-widest text-gray-300">Evacuados Registrados </div>
           <div id="peeCounterValue" class="text-6xl sm:text-7xl font-black text-brand-orange font-mono my-1">0</div>
           <div class="text-[11px] text-gray-400">Pulsa los botones gigantes a continuación para contar personas en tiempo real</div>
         </div>
