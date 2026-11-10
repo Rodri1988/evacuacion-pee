@@ -49,12 +49,12 @@
     <div class="max-w-5xl mx-auto flex items-center justify-between gap-2">
 
       <!-- Logo & Title -->
-      <div class="flex items-center space-x-2.5">
+      <div class="flex items-center space-x-2.5 min-w-0">
         <div class="bg-brand-orange p-2 rounded-xl text-white shadow-md flex items-center justify-center">
           <i data-lucide="shield-alert" class="w-6 h-6"></i>
         </div>
         <div>
-          <h1 class="font-black text-base sm:text-lg tracking-wider text-white uppercase leading-tight">
+          <h1 class="font-black text-sm sm:text-lg tracking-wider text-white uppercase leading-tight">
             EVACUACIÓN PEE
           </h1>
           <div class="text-[11px] text-gray-300 flex items-center gap-1.5 font-mono">
@@ -64,8 +64,8 @@
       </div>
 
       <!-- Evacuation Elapsed Timer -->
-      <div class="bg-black/40 border border-red-500/50 rounded-xl px-3 py-1.5 flex items-center space-x-2 shadow-inner">
-        <i data-lucide="timer" class="w-5 h-5 text-brand-orange"></i>
+      <div class="bg-black/40 border border-red-500/50 rounded-xl px-2 sm:px-3 py-1.5 flex items-center space-x-1.5 sm:space-x-2 shadow-inner shrink-0">
+        <i data-lucide="timer" class="hidden sm:block w-5 h-5 text-brand-orange"></i>
         <div>
           <div class="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Tiempo Alarma</div>
           <div id="evacuationTimer" class="font-mono text-lg sm:text-xl font-bold text-red-400">00:00:00</div>
@@ -141,7 +141,7 @@
       </div>
 
       <!-- BOTONES GIGANTES -->
-      <div class="grid grid-cols-2 gap-3 sm:gap-4">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
 
         <button onclick="addCount(1)" class="btn-tap bg-gradient-to-b from-emerald-600 to-green-700 active:from-green-500 active:to-emerald-600 border-2 border-green-400/50 text-white rounded-2xl p-5 sm:p-7 flex flex-col items-center justify-center shadow-2xl">
           <span class="text-xs font-extrabold tracking-wider uppercase text-green-200">Ingreso Individual</span>
