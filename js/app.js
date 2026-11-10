@@ -1,42 +1,55 @@
 // ==========================================
 // Sistema de Evacuación y Conteo Rápido - PEE
-// Versión con sincronización en tiempo real (Firebase)
+// Sincronización en tiempo real (Firebase) con acceso por contraseña
 // ==========================================
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   getDatabase, ref, onValue, set, update, remove, push, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+import {
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { firebaseConfig } from './firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const auth = getAuth(app);
+
+// Cuenta única de la brigada. La contraseña NO está en el código:
+// la valida Firebase y solo la conocen quienes la reciban de la brigada.
+const BRIGADA_EMAIL = 'brigada@conteo-pee.app';
+
+// Sala de datos compartida por toda la brigada
+const SALA = 'principal';
 
 const LOCAL_KEY = 'evac_local_v2';
 const PEES = ['PEE_1', 'PEE_2', 'PEE_3', 'PEE_4'];
 
 // Datos que solo viven en ESTE dispositivo
-const local = { activePEE: 'PEE_1', sala: '' };
+const local = { activePEE: 'PEE_1' };
 
 // Datos compartidos (vienen de Firebase)
-let state = {
-  expectedTotal: 150,
-  counts: { PEE_1: 0, PEE_2: 0, PEE_3: 0, PEE_4: 0 },
-  observaciones: [],
-  alarmStart: null
-};
+function defaultState() {
+  return {
+    expectedTotal: 150,
+    counts: { PEE_1: 0, PEE_2: 0, PEE_3: 0, PEE_4: 0 },
+    observaciones: [],
+    alarmStart: null
+  };
+}
+let state = defaultState();
 
-let salaRef = null;
 let unsubscribeSala = null;
 let serverOffset = 0;
 let connected = false;
+let signedIn = false;
 
-// ---------- Datos locales (PEE activo y código de sala) ----------
+// ---------- Datos locales (PEE activo) ----------
 function loadLocal() {
   try {
     const saved = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}');
     if (PEES.includes(saved.activePEE)) local.activePEE = saved.activePEE;
-    if (typeof saved.sala === 'string') local.sala = saved.sala;
   } catch (e) {
     console.error('Error cargando datos locales:', e);
   }
@@ -57,50 +70,76 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-function normalizeSala(raw) {
-  return String(raw || '')
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '');
-}
-
 function salaPath(sub) {
-  return sub ? `salas/${local.sala}/${sub}` : `salas/${local.sala}`;
+  return sub ? `salas/${SALA}/${sub}` : `salas/${SALA}`;
 }
 
-// ---------- Sala (código de brigada) ----------
-function openSalaModal() {
-  document.getElementById('salaInput').value = local.sala || '';
-  document.getElementById('salaError').classList.add('hidden');
-  document.getElementById('salaCancelBtn').classList.toggle('hidden', !local.sala);
-  document.getElementById('salaModal').classList.remove('hidden');
-  setTimeout(() => document.getElementById('salaInput').focus(), 50);
+// ---------- Acceso por contraseña ----------
+function openLogin() {
+  document.getElementById('loginError').classList.add('hidden');
+  document.getElementById('loginModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('loginPassword').focus(), 50);
 }
 
-function closeSalaModal() {
-  document.getElementById('salaModal').classList.add('hidden');
+function closeLogin() {
+  document.getElementById('loginModal').classList.add('hidden');
 }
 
-function submitSala(e) {
+function showLoginError(code) {
+  const msgs = {
+    'auth/invalid-credential': 'Contraseña incorrecta.',
+    'auth/wrong-password': 'Contraseña incorrecta.',
+    'auth/user-not-found': 'Contraseña incorrecta.',
+    'auth/invalid-login-credentials': 'Contraseña incorrecta.',
+    'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.',
+    'auth/network-request-failed': 'Sin conexión. Revisa tu internet e inténtalo de nuevo.'
+  };
+  const el = document.getElementById('loginError');
+  el.innerText = msgs[code] || 'No se pudo entrar. Inténtalo de nuevo.';
+  el.classList.remove('hidden');
+}
+
+async function submitLogin(e) {
   e.preventDefault();
-  const code = normalizeSala(document.getElementById('salaInput').value);
-  if (!/^[a-z0-9-]{4,40}$/.test(code)) {
-    document.getElementById('salaError').classList.remove('hidden');
-    return;
+  const input = document.getElementById('loginPassword');
+  const btn = document.getElementById('loginBtn');
+  const password = input.value;
+  if (!password) return;
+
+  btn.disabled = true;
+  btn.innerText = 'Verificando...';
+  document.getElementById('loginError').classList.add('hidden');
+
+  try {
+    await signInWithEmailAndPassword(auth, BRIGADA_EMAIL, password);
+    input.value = '';
+  } catch (err) {
+    showLoginError(err && err.code);
+  } finally {
+    btn.disabled = false;
+    btn.innerText = 'Entrar';
   }
-  enterSala(code);
 }
 
-function enterSala(code) {
-  if (unsubscribeSala) unsubscribeSala();
+function logout() {
+  if (confirm('¿Cerrar sesión en este dispositivo?')) {
+    signOut(auth).catch(console.error);
+  }
+}
 
-  local.sala = code;
-  saveLocal();
-  salaRef = ref(db, salaPath());
+function requireAuth() {
+  if (!signedIn) {
+    openLogin();
+    return false;
+  }
+  return true;
+}
 
+// ---------- Sincronización ----------
+function startSync() {
+  stopSync();
   unsubscribeSala = onValue(
-    salaRef,
+    ref(db, salaPath()),
     snap => {
       applyRemote(snap.val() || {});
       renderUI();
@@ -110,10 +149,14 @@ function enterSala(code) {
       updateSyncStatus('error');
     }
   );
+}
 
-  closeSalaModal();
-  renderUI();
-  updateSyncStatus();
+function stopSync() {
+  if (unsubscribeSala) {
+    unsubscribeSala();
+    unsubscribeSala = null;
+  }
+  state = defaultState();
 }
 
 function applyRemote(v) {
@@ -134,13 +177,20 @@ function applyRemote(v) {
   }));
 }
 
-function requireSala() {
-  if (!salaRef) {
-    openSalaModal();
-    return false;
+onAuthStateChanged(auth, user => {
+  if (user && user.email === BRIGADA_EMAIL) {
+    signedIn = true;
+    closeLogin();
+    startSync();
+  } else {
+    signedIn = false;
+    stopSync();
+    if (user) signOut(auth).catch(console.error); // cuenta que no es de la brigada
+    openLogin();
   }
-  return true;
-}
+  renderUI();
+  updateSyncStatus();
+});
 
 // ---------- Estado de conexión ----------
 function updateSyncStatus(forced) {
@@ -148,15 +198,15 @@ function updateSyncStatus(forced) {
   const text = document.getElementById('syncStatusText');
   const base = 'w-2.5 h-2.5 rounded-full inline-block ';
 
-  if (!local.sala) {
+  if (!signedIn) {
     dot.className = base + 'bg-yellow-400';
-    text.innerText = 'Sin código de brigada';
+    text.innerText = 'Acceso restringido';
   } else if (forced === 'error') {
     dot.className = base + 'bg-red-500';
-    text.innerText = 'Error de acceso a la sala';
+    text.innerText = 'Sin permiso de acceso';
   } else if (connected) {
     dot.className = base + 'bg-green-400 animate-pulse';
-    text.innerText = `En línea`;
+    text.innerText = 'En línea';
   } else {
     dot.className = base + 'bg-red-500';
     text.innerText = 'SIN CONEXIÓN (no se sincroniza)';
@@ -165,7 +215,7 @@ function updateSyncStatus(forced) {
 
 // ---------- Conteo ----------
 function addCount(amount) {
-  if (!requireSala()) return;
+  if (!requireAuth()) return;
   triggerHaptic();
   // Transacción: suma segura aunque varias personas cuenten a la vez
   runTransaction(ref(db, salaPath(`counts/${local.activePEE}`)), cur =>
@@ -180,14 +230,14 @@ function changeActivePEE() {
 }
 
 function resetCurrentPEE() {
-  if (!requireSala()) return;
+  if (!requireAuth()) return;
   if (confirm(`¿Reiniciar a cero el conteo del ${local.activePEE.replace('_', ' ')}? (Se reinicia para TODOS los dispositivos)`)) {
     set(ref(db, salaPath(`counts/${local.activePEE}`)), 0).catch(console.error);
   }
 }
 
 function editTotalExpected() {
-  if (!requireSala()) return;
+  if (!requireAuth()) return;
   const input = prompt('Ingrese la Dotación Total Esperada en Turno:', state.expectedTotal);
   if (input !== null) {
     const val = parseInt(input, 10);
@@ -200,7 +250,7 @@ function editTotalExpected() {
 // ---------- Observaciones (personas que se buscan) ----------
 function handleAddObservacion(e) {
   e.preventDefault();
-  if (!requireSala()) return;
+  if (!requireAuth()) return;
   const input = document.getElementById('inputNombre');
   const nombre = input.value.trim().slice(0, 100);
   if (!nombre) return;
@@ -216,7 +266,7 @@ function handleAddObservacion(e) {
 }
 
 function toggleObservacion(id) {
-  if (!requireSala()) return;
+  if (!requireAuth()) return;
   const item = state.observaciones.find(o => o.id === id);
   if (!item) return;
   triggerHaptic();
@@ -226,7 +276,7 @@ function toggleObservacion(id) {
 }
 
 function removeObservacion(id) {
-  if (!requireSala()) return;
+  if (!requireAuth()) return;
   if (confirm('¿Eliminar este registro de Observaciones?')) {
     remove(ref(db, salaPath(`observaciones/${id}`))).catch(console.error);
   }
@@ -234,12 +284,12 @@ function removeObservacion(id) {
 
 // ---------- Cronómetro compartido ----------
 function startAlarm() {
-  if (!requireSala()) return;
+  if (!requireAuth()) return;
   set(ref(db, salaPath('alarmStart')), Date.now() + serverOffset).catch(console.error);
 }
 
 function resetTimer() {
-  if (!requireSala()) return;
+  if (!requireAuth()) return;
   if (confirm('¿Reiniciar el tiempo de alarma a 00:00:00? (Se reinicia para TODOS los dispositivos)')) {
     set(ref(db, salaPath('alarmStart')), null).catch(console.error);
   }
@@ -265,7 +315,7 @@ function updateTimerDisplay() {
 
 // ---------- Reinicio global ----------
 function resetAllEvacuationData() {
-  if (!requireSala()) return;
+  if (!requireAuth()) return;
   if (confirm('⚠️ ¿Está seguro de REINICIAR TODOS los conteos, las observaciones y la alarma? Se borrará para TODOS los dispositivos.')) {
     update(ref(db, salaPath()), {
       counts: { PEE_1: 0, PEE_2: 0, PEE_3: 0, PEE_4: 0 },
@@ -394,7 +444,7 @@ Object.assign(window, {
   handleAddObservacion, toggleObservacion, removeObservacion,
   startAlarm, resetTimer, resetAllEvacuationData,
   switchTab, openPrintReport,
-  openSalaModal, closeSalaModal, submitSala
+  submitLogin, logout
 });
 
 // ---------- Inicio ----------
@@ -414,9 +464,4 @@ setInterval(updateTimerDisplay, 1000);
 
 renderUI();
 updateSyncStatus();
-
-if (local.sala && /^[a-z0-9-]{4,40}$/.test(local.sala)) {
-  enterSala(local.sala);
-} else {
-  openSalaModal();
-}
+// El acceso lo decide onAuthStateChanged: con sesión guardada entra solo; si no, pide la contraseña.
