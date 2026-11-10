@@ -26,6 +26,9 @@ const SALA = 'principal';
 const LOCAL_KEY = 'evac_local_v2';
 const PEES = ['PEE_1', 'PEE_2', 'PEE_3', 'PEE_4'];
 
+// Los nombres de Observaciones se borran solos pasadas estas horas
+const RETENTION_HOURS = 12;
+
 // Datos que solo viven en ESTE dispositivo
 const local = { activePEE: 'PEE_1' };
 
@@ -42,6 +45,7 @@ let state = defaultState();
 
 let unsubscribeSala = null;
 let serverOffset = 0;
+let offsetReady = false;
 let connected = false;
 let signedIn = false;
 
@@ -163,6 +167,7 @@ function startSync() {
     snap => {
       applyRemote(snap.val() || {});
       renderUI();
+      purgeExpired();
     },
     err => {
       console.error('Error de sincronización:', err);
@@ -333,10 +338,23 @@ function updateTimerDisplay() {
   document.getElementById('btnResetTimer').classList.toggle('hidden', !running);
 }
 
-// ---------- Reinicio global ----------
+// ---------- Borrado automático de nombres ----------
+// Cualquier dispositivo con la app abierta borra las observaciones que superen
+// el tiempo de retención. Solo actúa cuando ya conoce la hora real del servidor.
+function purgeExpired() {
+  if (!signedIn || !offsetReady) return;
+  const limit = Date.now() + serverOffset - RETENTION_HOURS * 3600 * 1000;
+  state.observaciones.forEach(o => {
+    if (!(o.ts > limit)) {
+      remove(ref(db, salaPath(`observaciones/${o.id}`))).catch(console.error);
+    }
+  });
+}
+
+// ---------- Finalizar evento: borra todo ----------
 function resetAllEvacuationData() {
   if (!requireAuth()) return;
-  if (confirm('⚠️ ¿Está seguro de REINICIAR TODOS los conteos, las observaciones y la alarma? Se borrará para TODOS los dispositivos.')) {
+  if (confirm('⚠️ ¿Finalizar el evento? Se borrarán TODOS los conteos, los nombres de Observaciones y la alarma, para TODOS los dispositivos. No se puede deshacer.')) {
     update(ref(db, salaPath()), {
       counts: { PEE_1: 0, PEE_2: 0, PEE_3: 0, PEE_4: 0 },
       observaciones: null,
@@ -473,6 +491,8 @@ loadLocal();
 // Diferencia entre el reloj del celular y el del servidor (para que todos vean el mismo tiempo)
 onValue(ref(db, '.info/serverTimeOffset'), snap => {
   serverOffset = snap.val() || 0;
+  offsetReady = true;
+  purgeExpired();
 });
 
 onValue(ref(db, '.info/connected'), snap => {
@@ -481,6 +501,7 @@ onValue(ref(db, '.info/connected'), snap => {
 });
 
 setInterval(updateTimerDisplay, 1000);
+setInterval(purgeExpired, 10 * 60 * 1000);
 
 renderUI();
 updateSyncStatus();
