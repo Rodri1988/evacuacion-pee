@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#002874">
-  <title>Sistema de Evacuación Brigada</title>
+  <title>Sistema de Evacuación y Conteo Rápido - PEE</title>
 
   <!-- Tailwind CSS (CDN) + configuración propia -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -18,29 +18,22 @@
 </head>
 <body class="min-h-screen flex flex-col justify-between">
 
-  <!-- VENTANA: CÓDIGO DE BRIGADA (NO PRINT) -->
-  <div id="salaModal" class="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-4 no-print">
-    <form onsubmit="submitSala(event)" class="bg-brand-navy border-2 border-brand-orange/60 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-3">
+  <!-- VENTANA: CONTRASEÑA DE BRIGADA (NO PRINT) -->
+  <div id="loginModal" class="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 no-print">
+    <form onsubmit="submitLogin(event)" class="bg-brand-navy border-2 border-brand-orange/60 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-3">
       <div class="flex items-center gap-2">
         <i data-lucide="key-round" class="w-5 h-5 text-brand-orange"></i>
-        <h2 class="text-base font-black uppercase tracking-wide">Código de brigada</h2>
+        <h2 class="text-base font-black uppercase tracking-wide">Acceso de brigada</h2>
       </div>
       <p class="text-xs text-gray-300">
-        Escribe el código que te entregó el Líder de Evacuación. Todos los monitores y el Puesto de Mando deben usar <strong>el mismo código</strong> para ver los mismos conteos.
+        Escribe la contraseña de la brigada. Solo personal autorizado.
       </p>
-      <input type="text" id="salaInput" autocomplete="off" autocapitalize="none" placeholder="Ej: brigada2026"
+      <input type="password" id="loginPassword" autocomplete="current-password" autocapitalize="none" placeholder="Contraseña"
         class="w-full bg-slate-900 border-2 border-brand-orange text-white text-base font-bold rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-orange-400">
-      <p id="salaError" class="hidden text-xs text-red-300 font-bold">
-        El código debe tener entre 4 y 40 caracteres: letras, números o guiones (sin espacios ni tildes).
-      </p>
-      <div class="flex gap-2">
-        <button type="submit" class="btn-tap flex-1 bg-brand-orange hover:bg-brand-orangeHover text-white font-extrabold text-sm py-3 rounded-xl">
-          Entrar
-        </button>
-        <button type="button" id="salaCancelBtn" onclick="closeSalaModal()" class="btn-tap hidden bg-slate-700 hover:bg-slate-600 text-gray-200 font-bold text-sm px-4 rounded-xl">
-          Cancelar
-        </button>
-      </div>
+      <p id="loginError" class="hidden text-xs text-red-300 font-bold"></p>
+      <button type="submit" id="loginBtn" class="btn-tap w-full bg-brand-orange hover:bg-brand-orangeHover text-white font-extrabold text-sm py-3 rounded-xl">
+        Entrar
+      </button>
     </form>
   </div>
 
@@ -55,12 +48,11 @@
         </div>
         <div>
           <h1 class="font-black text-base sm:text-lg tracking-wider text-white uppercase leading-tight">
-            EVACUACIÓN BRIGADA
+            EVACUACIÓN PEE
           </h1>
           <div class="text-[11px] text-gray-300 flex items-center gap-1.5 font-mono">
             <span id="syncStatusDot" class="w-2.5 h-2.5 rounded-full bg-green-400 inline-block animate-pulse"></span>
-            <span id="syncStatusText">Conectando...</span>
-          </div>
+            <span id="syncStatusText">Conectando...</span>          </div>
         </div>
       </div>
 
@@ -86,7 +78,7 @@
     <nav class="max-w-5xl mx-auto flex mt-3 bg-black/40 p-1 rounded-xl border border-white/10 text-xs font-bold">
       <button id="tabBtn1" onclick="switchTab('counter')" class="flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 bg-brand-orange text-white shadow-md">
         <i data-lucide="touchpad" class="w-4 h-4"></i>
-        Conteo Personal
+        Conteo PEE
       </button>
       <button id="tabBtn2" onclick="switchTab('command')" class="flex-1 py-2.5 rounded-lg transition flex items-center justify-center gap-1.5 text-gray-300 hover:text-white">
         <i data-lucide="siren" class="w-4 h-4"></i>
@@ -135,7 +127,7 @@
         </div>
 
         <div class="mt-4 bg-black/50 border border-white/10 rounded-xl p-4 text-center">
-          <div class="text-xs uppercase font-extrabold tracking-widest text-gray-300">Evacuados Registrados </div>
+          <div class="text-xs uppercase font-extrabold tracking-widest text-gray-300">Evacuados Registrados en este PEE</div>
           <div id="peeCounterValue" class="text-6xl sm:text-7xl font-black text-brand-orange font-mono my-1">0</div>
           <div class="text-[11px] text-gray-400">Pulsa los botones gigantes a continuación para contar personas en tiempo real</div>
         </div>
@@ -188,6 +180,7 @@
           </h2>
           <p class="text-xs text-gray-300">Muestreo en tiempo real acumulado de todos los PEE.</p>
         </div>
+
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -389,6 +382,7 @@
   <!-- FOOTER (NO PRINT) -->
   <footer class="bg-black/60 border-t border-white/10 p-2.5 text-center text-[11px] text-gray-400 no-print">
     <span>Sistema de Evacuación PWA | Respuesta Táctica e Industrial</span>
+    <button onclick="logout()" class="underline text-gray-300 hover:text-white ml-3">Cerrar sesión</button>
   </footer>
 
   <!-- Lógica de la aplicación -->
