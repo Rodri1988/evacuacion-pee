@@ -76,6 +76,7 @@ function salaPath(sub) {
 
 // ---------- Acceso por contraseña ----------
 function openLogin() {
+  hidePassword();
   document.getElementById('loginError').classList.add('hidden');
   document.getElementById('loginModal').classList.remove('hidden');
   setTimeout(() => document.getElementById('loginPassword').focus(), 50);
@@ -83,6 +84,25 @@ function openLogin() {
 
 function closeLogin() {
   document.getElementById('loginModal').classList.add('hidden');
+}
+
+// Ojito: mostrar u ocultar la contraseña mientras se escribe
+function togglePassword() {
+  const input = document.getElementById('loginPassword');
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  document.getElementById('eyeOn').classList.toggle('hidden', !showing);
+  document.getElementById('eyeOff').classList.toggle('hidden', showing);
+  document.getElementById('togglePassBtn').setAttribute(
+    'aria-label', showing ? 'Mostrar contraseña' : 'Ocultar contraseña'
+  );
+}
+
+function hidePassword() {
+  const input = document.getElementById('loginPassword');
+  input.type = 'password';
+  document.getElementById('eyeOn').classList.remove('hidden');
+  document.getElementById('eyeOff').classList.add('hidden');
 }
 
 function showLoginError(code) {
@@ -444,7 +464,7 @@ Object.assign(window, {
   handleAddObservacion, toggleObservacion, removeObservacion,
   startAlarm, resetTimer, resetAllEvacuationData,
   switchTab, openPrintReport,
-  submitLogin, logout
+  submitLogin, logout, togglePassword
 });
 
 // ---------- Inicio ----------
