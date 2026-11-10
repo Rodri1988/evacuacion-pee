@@ -252,7 +252,7 @@
       <div class="pt-4 border-t border-white/10 flex justify-end no-print">
         <button onclick="resetAllEvacuationData()" class="bg-red-950/80 hover:bg-red-900 border border-red-600/60 text-red-300 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition">
           <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-          Reiniciar Alarma y Conteos Globales
+          Finalizar evento y borrar todo
         </button>
       </div>
 
@@ -267,11 +267,11 @@
             <i data-lucide="search" class="w-5 h-5 text-brand-orange"></i>
             Observaciones
           </h2>
-          <p class="text-xs text-gray-300">Registra el nombre de la persona que se necesita encontrar. Cuando aparezca, márcala como Encontrado.</p>
+          <p class="text-xs text-gray-300">Registra el nombre de la persona que se necesita encontrar. Cuando aparezca, márcala como Encontrado. Los nombres se borran solos a las 12 horas y al finalizar el evento.</p>
         </div>
 
         <form onsubmit="handleAddObservacion(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
-          <input type="text" id="inputNombre" placeholder="Nombre de la persona que se busca..." required class="sm:col-span-2 bg-slate-900 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:border-brand-orange">
+          <input type="text" id="inputNombre" placeholder="Nombre y apellido (sin RUT ni otros datos)" required class="sm:col-span-2 bg-slate-900 border border-white/20 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:border-brand-orange">
 
           <button type="submit" class="bg-brand-orange hover:bg-brand-orangeHover text-white font-extrabold text-xs p-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg">
             <i data-lucide="user-plus" class="w-4 h-4"></i>
